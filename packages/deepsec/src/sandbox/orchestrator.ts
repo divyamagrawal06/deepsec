@@ -261,10 +261,10 @@ export async function launch(config: SandboxConfig, onLog: (msg: string) => void
   saveRunState(state);
   onLog(`Run ${runId} launched with ${sandboxEntries.length} sandbox(es). You can disconnect now.`);
   onLog(
-    `  Collect results later: pnpm deepsec sandbox collect --project-id ${config.projectId} --run-id ${runId}`,
+    `  Collect results later: pnpx deepsec sandbox collect --project-id ${config.projectId} --run-id ${runId}`,
   );
   onLog(
-    `  Check status:          pnpm deepsec sandbox status --project-id ${config.projectId} --run-id ${runId}`,
+    `  Check status:          pnpx deepsec sandbox status --project-id ${config.projectId} --run-id ${runId}`,
   );
 
   return runId;

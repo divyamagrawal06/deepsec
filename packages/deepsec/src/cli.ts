@@ -18,6 +18,7 @@ import { scanCommand } from "./commands/scan.js";
 import { statusCommand } from "./commands/status.js";
 import { triageCommand } from "./commands/triage.js";
 import { loadConfig } from "./load-config.js";
+import { resolveProjectId, resolveRoot } from "./resolve-defaults.js";
 
 const program = new Command();
 
@@ -48,15 +49,19 @@ program
 program
   .command("scan")
   .description("Scan a codebase for candidate vulnerability sites")
-  .requiredOption("--project-id <id>", "Project identifier")
-  .requiredOption("--root <path>", "Root path of the codebase to scan")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
+  .option("--root <path>", "Root path of the codebase to scan (inferred from config)")
   .option("--matchers <slugs>", "Comma-separated list of matcher slugs to use")
-  .action(scanCommand);
+  .action((opts: { projectId?: string; root?: string; matchers?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "scan");
+    const root = resolveRoot(opts.root, projectId);
+    return scanCommand({ projectId, root, matchers: opts.matchers });
+  });
 
 program
   .command("process")
   .description("Investigate candidates with an AI agent")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--run-id <id>", "Resume a specific processing run")
   .option("--agent <type>", "Agent plugin type (claude-agent-sdk, codex)", "claude-agent-sdk")
   .option(
@@ -79,19 +84,25 @@ program
   )
   .option("--only-slugs <csv>", "Only process files that have a candidate with one of these slugs")
   .option("--skip-slugs <csv>", "Skip files whose candidate slugs are all in this set")
-  .action(processCommand);
+  .action((opts: Parameters<typeof processCommand>[0] & { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "process");
+    return processCommand({ ...opts, projectId });
+  });
 
 program
   .command("report")
   .description("Generate a markdown + JSON report from current analysis state.")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--run-id <id>", "Filter to a specific run's results")
-  .action(reportCommand);
+  .action((opts: { projectId?: string; runId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "report");
+    return reportCommand({ ...opts, projectId });
+  });
 
 program
   .command("revalidate")
   .description("Re-check existing findings for false positives")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--run-id <id>", "Resume a specific revalidation run")
   .option("--agent <type>", "Agent plugin type (claude-agent-sdk, codex)", "claude-agent-sdk")
   .option(
@@ -112,12 +123,15 @@ program
   .option("--manifest <path>", "JSON file with array of file paths to revalidate")
   .option("--only-slugs <csv>", "Only revalidate findings with one of these vulnSlugs")
   .option("--skip-slugs <csv>", "Skip findings with any of these vulnSlugs")
-  .action(revalidateCommand);
+  .action((opts: Parameters<typeof revalidateCommand>[0] & { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "revalidate");
+    return revalidateCommand({ ...opts, projectId });
+  });
 
 program
   .command("enrich")
   .description("Enrich files with git history + ownership oracle")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--filter <prefix>", "Only enrich files matching path prefix")
   .option(
     "--min-severity <sev>",
@@ -125,24 +139,33 @@ program
   )
   .option("--force", "Re-enrich already-enriched files")
   .option("--concurrency <n>", "Parallel ownership oracle requests (default: cores - 1)", parseInt)
-  .action(enrichCommand);
+  .action((opts: Parameters<typeof enrichCommand>[0] & { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "enrich");
+    return enrichCommand({ ...opts, projectId });
+  });
 
 program
   .command("triage")
   .description("Classify findings by priority (P0/P1/P2/skip) — lightweight, no code reading")
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--severity <sev>", "Severity to triage (default: MEDIUM)", "MEDIUM")
   .option("--model <model>", "Model to use (default: claude-sonnet-4-6 — cheaper)")
   .option("--force", "Re-triage already-triaged findings")
   .option("--limit <n>", "Max findings to triage", parseInt)
   .option("--concurrency <n>", "Parallel triage batches (default: cores - 1)", parseInt)
-  .action(triageCommand);
+  .action((opts: Parameters<typeof triageCommand>[0] & { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "triage");
+    return triageCommand({ ...opts, projectId });
+  });
 
 program
   .command("status")
   .description("Show current state of the project mirror")
-  .requiredOption("--project-id <id>", "Project identifier")
-  .action(statusCommand);
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
+  .action((opts: { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId, "status");
+    return statusCommand({ projectId });
+  });
 
 program
   .command("export")
@@ -195,7 +218,7 @@ const sandboxCmd = program
   )
   .allowUnknownOption()
   .allowExcessArguments(true)
-  .requiredOption("--project-id <id>", "Project identifier")
+  .option("--project-id <id>", "Project identifier (inferred from config if only one project)")
   .option("--sandboxes <n>", "Number of parallel sandboxes (default: 1)", parseInt)
   .option("--vcpus <n>", "vCPUs per sandbox (default: 2, max: 8)", parseInt)
   .option("--detach", "Launch sandboxes and exit immediately (collect results later)")
@@ -204,10 +227,11 @@ const sandboxCmd = program
   .option("--save-snapshot", "Snapshot after setup for future reuse")
   .option("--keep-alive", "Don't stop sandboxes after completion")
   .option("--timeout <ms>", "Sandbox timeout in ms (default: 5 hours)", parseInt)
-  .action((subcommand: string, opts: Record<string, unknown>) => {
+  .action((subcommand: string, opts: Record<string, unknown> & { projectId?: string }) => {
+    const projectId = resolveProjectId(opts.projectId as string | undefined, "sandbox");
     // Commander puts unknown options into .args on the Command object
     const unknownArgs = sandboxCmd.args.slice(1); // skip the subcommand itself
-    return sandboxCommand(subcommand, { ...opts, args: unknownArgs } as Parameters<
+    return sandboxCommand(subcommand, { ...opts, projectId, args: unknownArgs } as Parameters<
       typeof sandboxCommand
     >[1]);
   });

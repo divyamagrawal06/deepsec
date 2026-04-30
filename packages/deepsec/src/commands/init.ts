@@ -72,8 +72,8 @@ export function initCommand(opts: InitOpts) {
   );
   console.log(`  ${DIM}It walks the agent through filling in INFO.md from your repo.${RESET}`);
   console.log();
-  console.log(`  pnpm deepsec scan    --project-id ${projectId} --root ${targetRel}`);
-  console.log(`  pnpm deepsec process --project-id ${projectId}`);
+  console.log(`  pnpx deepsec scan`);
+  console.log(`  pnpx deepsec process`);
 }
 
 function writeFile(dir: string, name: string, content: string) {
@@ -178,8 +178,8 @@ Setup is incomplete — \`INFO.md\` still has placeholder sections.
 The user will run:
 
 \`\`\`bash
-pnpm deepsec scan    --project-id ${id} --root ${targetRel}
-pnpm deepsec process --project-id ${id}
+pnpx deepsec scan
+pnpx deepsec process
 \`\`\`
 
 You can delete this file once setup is complete.

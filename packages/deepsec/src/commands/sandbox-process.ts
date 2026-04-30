@@ -159,10 +159,10 @@ export async function sandboxCommand(subcommand: string, opts: SandboxOpts) {
     console.log();
     console.log(`${GREEN}Launched${RESET} run ${BOLD}${runId}${RESET}`);
     console.log(
-      `  Status:  ${DIM}pnpm deepsec sandbox status --project-id ${config.projectId} --run-id ${runId}${RESET}`,
+      `  Status:  ${DIM}pnpx deepsec sandbox status --project-id ${config.projectId} --run-id ${runId}${RESET}`,
     );
     console.log(
-      `  Collect: ${DIM}pnpm deepsec sandbox collect --project-id ${config.projectId} --run-id ${runId}${RESET}`,
+      `  Collect: ${DIM}pnpx deepsec sandbox collect --project-id ${config.projectId} --run-id ${runId}${RESET}`,
     );
     return;
   }
