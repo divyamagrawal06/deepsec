@@ -19,18 +19,22 @@ parent/
 └── another-service/   ← another target codebase
 ```
 
-From inside your first target codebase, step out and scaffold a
-workspace seeded with that codebase as the first project:
+From inside your target codebase, scaffold a workspace:
 
 ```bash
-cd ..                                              # out of my-app/
-npx deepsec init security-audits ./my-app          # workspace + first project
+npx deepsec init                                   # creates ./security-audits
 cd security-audits
 pnpm install                                       # installs deepsec
 ```
 
+To customize the workspace name or target a different directory:
+
+```bash
+npx deepsec init --workspace my-audits --target ../other-app
+```
+
 `init` lays down a minimal scaffold: `package.json`, `deepsec.config.ts`
-(with one `projects[]` entry pointing at `./my-app`, id derived from the
+(with one `projects[]` entry pointing at the target, id derived from the
 target's basename), an `INFO.md` template with section placeholders, an
 `AGENTS.md` with a setup prompt for your coding agent, plus `.env.local`
 and `.gitignore`. There are no custom matchers in the scaffold — add

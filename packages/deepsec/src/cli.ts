@@ -27,22 +27,21 @@ program
   .version("0.1.0");
 
 program
-  .command("init <workspace> <target-root>")
-  .description("Bootstrap a scanning workspace seeded with one project + agent setup prompt")
-  .option("--id <project-id>", "Override the project id (default: basename of <target-root>)")
+  .command("init")
+  .description(
+    "Bootstrap a scanning workspace (default: ./security-audits scanning current directory)",
+  )
+  .option("--workspace <path>", "Where to create the workspace", "security-audits")
+  .option("--target <path>", "Path to the codebase to scan", ".")
+  .option("--id <project-id>", "Override the project id (default: basename of target)")
   .option("--force", "Write into a non-empty workspace directory")
-  .action(
-    (
-      workspace: string | undefined,
-      targetRoot: string | undefined,
-      opts: { id?: string; force?: boolean },
-    ) =>
-      initCommand({
-        workspace,
-        targetRoot,
-        id: opts.id,
-        force: opts.force,
-      }),
+  .action((opts: { workspace: string; target: string; id?: string; force?: boolean }) =>
+    initCommand({
+      workspace: opts.workspace,
+      targetRoot: opts.target,
+      id: opts.id,
+      force: opts.force,
+    }),
   );
 
 program

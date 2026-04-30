@@ -27,8 +27,8 @@ This sample is what the workspace can grow into. Read it for shape;
 don't copy it as your starting point. The intended flow:
 
 ```bash
-# Start minimal
-npx deepsec init security-audits ./my-app
+# Start minimal (run from inside your target codebase)
+npx deepsec init
 cd security-audits && pnpm install
 # Let your agent fill INFO.md per AGENTS.md, then scan.
 

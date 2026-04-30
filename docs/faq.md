@@ -7,8 +7,8 @@ scaffold it with `npx deepsec init`. One workspace covers many
 target repos via `projects[]` in `deepsec.config.ts`:
 
 ```bash
-cd ~/wherever-your-repos-live
-npx deepsec init security-audits
+cd ~/wherever-your-repos-live/my-app
+npx deepsec init
 cd security-audits
 pnpm install
 ```

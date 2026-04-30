@@ -5,23 +5,13 @@ import { BOLD, DIM, GREEN, RESET, YELLOW } from "../formatters.js";
 const IGNORED_WORKSPACE_ENTRIES = new Set([".git", ".DS_Store"]);
 
 interface InitOpts {
-  workspace?: string;
-  targetRoot?: string;
+  workspace: string;
+  targetRoot: string;
   id?: string;
   force?: boolean;
 }
 
 export function initCommand(opts: InitOpts) {
-  if (!opts.workspace || !opts.targetRoot) {
-    console.error(
-      `Usage: deepsec init <workspace-dir> <target-root> [--id <project-id>] [--force]\n\n` +
-        `  <workspace-dir>  Where to create the new scanning workspace\n` +
-        `  <target-root>    Path to the codebase you want to scan first\n\n` +
-        `Example:\n  deepsec init security-audits ../my-app`,
-    );
-    process.exit(1);
-  }
-
   const workspaceDir = path.resolve(process.cwd(), opts.workspace);
   const targetRoot = path.resolve(process.cwd(), opts.targetRoot);
 
@@ -66,16 +56,16 @@ export function initCommand(opts: InitOpts) {
   console.log(`  ${DIM}First project:${RESET} ${BOLD}${projectId}${RESET} → ${targetRel}\n`);
   console.log("Next steps:\n");
   if (wsRel !== ".") console.log(`  cd ${wsRel}`);
-  console.log(`  pnpm install                          ${DIM}# installs deepsec${RESET}`);
-  console.log(`  ${DIM}# Set ANTHROPIC_AUTH_TOKEN in .env.local${RESET}`);
+  console.log(`  pnpm install                          ${DIM}# install deepsec${RESET}`);
+  console.log();
+  console.log(`  ${DIM}# Add your Vercel AI Gateway key to .env.local as ANTHROPIC_AUTH_TOKEN${RESET}`);
   console.log();
   console.log(
-    `  ${YELLOW}Hand off to your coding agent:${RESET} ${BOLD}AGENTS.md${RESET} has the prompt.`,
+    `  ${YELLOW}Start your coding agent in ${BOLD}${wsRel}${RESET}${YELLOW} and prompt:${RESET} "Follow the AGENTS.md"`,
   );
-  console.log(`  ${DIM}It walks the agent through filling in data/${projectId}/INFO.md.${RESET}`);
   console.log();
-  console.log(`  pnpm deepsec scan    --project-id ${projectId} --root ${targetRel}`);
-  console.log(`  pnpm deepsec process --project-id ${projectId}`);
+  console.log(`  pnpm deepsec scan    --root ${targetRel}`);
+  console.log(`  pnpm deepsec process`);
 }
 
 function writeFile(dir: string, name: string, content: string) {
