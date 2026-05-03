@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyAiGatewayDefaults,
@@ -7,19 +10,35 @@ import {
 
 describe("assertAgentCredential", () => {
   let saved: Record<string, string | undefined>;
+  let emptyClaudeHome: string;
+  let emptyCodexHome: string;
   beforeEach(() => {
     saved = {
       ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+      CLAUDE_HOME: process.env.CLAUDE_HOME,
+      CODEX_HOME: process.env.CODEX_HOME,
     };
     delete process.env.ANTHROPIC_AUTH_TOKEN;
     delete process.env.OPENAI_API_KEY;
+    delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    // Point CLAUDE_HOME / CODEX_HOME at empty tmp dirs so the suite is
+    // hermetic — the dev running tests may have a real
+    // ~/.claude/.credentials.json or ~/.codex/auth.json from local
+    // logins, which would cause "no token" tests to incorrectly pass.
+    emptyClaudeHome = mkdtempSync(join(tmpdir(), "deepsec-claude-home-"));
+    emptyCodexHome = mkdtempSync(join(tmpdir(), "deepsec-codex-home-"));
+    process.env.CLAUDE_HOME = emptyClaudeHome;
+    process.env.CODEX_HOME = emptyCodexHome;
   });
   afterEach(() => {
     for (const [k, v] of Object.entries(saved)) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
+    rmSync(emptyClaudeHome, { recursive: true, force: true });
+    rmSync(emptyCodexHome, { recursive: true, force: true });
   });
 
   it("passes for claude-agent-sdk when ANTHROPIC_AUTH_TOKEN is set", () => {
@@ -36,6 +55,37 @@ describe("assertAgentCredential", () => {
     );
   });
 
+  it("passes for claude-agent-sdk when CLAUDE_CODE_OAUTH_TOKEN is set", () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "oauth-token";
+    expect(() => assertAgentCredential("claude-agent-sdk")).not.toThrow();
+  });
+
+  it("passes for claude-agent-sdk when ~/.claude/.credentials.json exists", () => {
+    writeFileSync(join(emptyClaudeHome, ".credentials.json"), "{}");
+    expect(() => assertAgentCredential("claude-agent-sdk")).not.toThrow();
+  });
+
+  it("ignores subscription auth in sandbox mode (worker VM has no claude CLI)", () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "oauth-token";
+    expect(() => assertAgentCredential("claude-agent-sdk", { inSandbox: true })).toThrow(
+      /AI_GATEWAY_API_KEY/,
+    );
+    writeFileSync(join(emptyClaudeHome, ".credentials.json"), "{}");
+    expect(() => assertAgentCredential("claude-agent-sdk", { inSandbox: true })).toThrow(
+      /AI_GATEWAY_API_KEY/,
+    );
+  });
+
+  it("omits the subscription hint from the sandbox-mode error message", () => {
+    expect(() => assertAgentCredential("claude-agent-sdk", { inSandbox: true })).not.toThrow(
+      /CLAUDE_CODE_OAUTH_TOKEN/,
+    );
+    expect(() => assertAgentCredential("claude-agent-sdk", { inSandbox: true })).not.toThrow(
+      /claude login/,
+    );
+    expect(() => assertAgentCredential("claude-agent-sdk")).toThrow(/CLAUDE_CODE_OAUTH_TOKEN/);
+  });
+
   it("passes for codex when OPENAI_API_KEY is set", () => {
     process.env.OPENAI_API_KEY = "x";
     expect(() => assertAgentCredential("codex")).not.toThrow();
@@ -46,7 +96,28 @@ describe("assertAgentCredential", () => {
     expect(() => assertAgentCredential("codex")).not.toThrow();
   });
 
-  it("throws for codex when no token", () => {
+  it("passes for codex when ~/.codex/auth.json exists (subscription mode)", () => {
+    writeFileSync(join(emptyCodexHome, "auth.json"), "{}");
+    expect(() => assertAgentCredential("codex")).not.toThrow();
+  });
+
+  it("ignores codex subscription auth in sandbox mode", () => {
+    writeFileSync(join(emptyCodexHome, "auth.json"), "{}");
+    // With auth.json present, non-sandbox passes — sandbox still throws.
+    expect(() => assertAgentCredential("codex")).not.toThrow();
+    expect(() => assertAgentCredential("codex", { inSandbox: true })).toThrow(/OPENAI_API_KEY/);
+    expect(() => assertAgentCredential("codex", { inSandbox: true })).not.toThrow(/codex login/);
+  });
+
+  it("mentions `codex login` only in the non-sandbox error message", () => {
+    expect(() => assertAgentCredential("codex")).toThrow(/codex login/);
+    expect(() => assertAgentCredential("codex", { inSandbox: true })).not.toThrow(/codex login/);
+  });
+
+  it("does not let a Claude subscription unlock codex", () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "oauth-token";
+    writeFileSync(join(emptyClaudeHome, ".credentials.json"), "{}");
+    // Empty CODEX_HOME → no codex login → still throws.
     expect(() => assertAgentCredential("codex")).toThrow(/OPENAI_API_KEY/);
     expect(() => assertAgentCredential("codex")).toThrow(/AI_GATEWAY_API_KEY/);
     expect(() => assertAgentCredential("codex")).toThrow(

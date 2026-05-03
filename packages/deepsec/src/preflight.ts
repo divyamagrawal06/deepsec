@@ -8,6 +8,10 @@
 // from upstream as if it were a model issue. Each variant has cost the
 // human time before, so we trade ~20 lines for a clear message up front.
 
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 // Linkable URL — printed in error messages so users can paste the
 // URL into a browser instead of hunting through the repo. Points at
 // the rendered `main` version on github.com so it works whether the
@@ -46,6 +50,45 @@ function isCodex(agentType: string | undefined): boolean {
   return agentType === "codex";
 }
 
+/**
+ * Detect a local Claude Code subscription login. The Claude Agent SDK
+ * spawns the `claude` CLI as a subprocess, so any auth that CLI accepts
+ * (Linux file-based credentials, a long-lived OAuth token from
+ * `claude setup-token`) lets the SDK run without an API key on the
+ * orchestrator's env.
+ *
+ * macOS users authenticate Claude Code via Keychain — there's no file
+ * marker we can read without spawning `security` and racing against
+ * permission prompts. For that path we ask the user to run
+ * `claude setup-token` once and put the resulting token in
+ * `CLAUDE_CODE_OAUTH_TOKEN`; that's the cross-platform escape hatch the
+ * SDK already understands.
+ *
+ * Only relevant for non-sandbox runs. The sandbox path runs in a worker
+ * VM that has no claude binary and no keychain access; it must ship a
+ * real API token through the firewall header rewrite, so this helper is
+ * never consulted there.
+ */
+function hasLocalClaudeLogin(): boolean {
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return true;
+  const claudeHome = process.env.CLAUDE_HOME || join(homedir(), ".claude");
+  return existsSync(join(claudeHome, ".credentials.json"));
+}
+
+/**
+ * Detect a local Codex subscription login. `codex login` writes
+ * `auth.json` into `$CODEX_HOME` (defaulting to `~/.codex`) on every
+ * platform deepsec supports — Codex doesn't use Keychain on macOS — so
+ * a single file check suffices.
+ *
+ * Same non-sandbox restriction as the Claude variant: the codex binary
+ * lives on the orchestrator's host, not in the sandbox worker VM.
+ */
+function hasLocalCodexLogin(): boolean {
+  const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
+  return existsSync(join(codexHome, "auth.json"));
+}
+
 // Built-in backends we know how to credential-check. Agents registered
 // via plugins (deepsec.config.ts → plugins: [{ agents: [...] }]) handle
 // their own credential resolution, so we skip the check for anything
@@ -58,11 +101,19 @@ const KNOWN_BACKENDS = new Set<string>(["claude-agent-sdk", "codex"]);
  * sandbox path brokers credentials via firewall header injection, but
  * that only works if the orchestrator actually has a token to inject.
  *
+ * Pass `inSandbox: true` from sandbox commands. Subscription auth (a
+ * local `claude login`) is only honored when this is false — the
+ * sandbox worker has no `claude` CLI and no Keychain, so it must ship a
+ * real API token through the firewall header rewrite.
+ *
  * Skipped for plugin-supplied agents (`agentType` not in `KNOWN_BACKENDS`):
  * those backends own their credential story. Tests use this to plug in a
  * stub agent without setting fake env vars.
  */
-export function assertAgentCredential(agentType: string | undefined): void {
+export function assertAgentCredential(
+  agentType: string | undefined,
+  options: { inSandbox?: boolean } = {},
+): void {
   if (agentType !== undefined && !KNOWN_BACKENDS.has(agentType)) return;
 
   const anthropic = process.env.ANTHROPIC_AUTH_TOKEN;
@@ -72,6 +123,14 @@ export function assertAgentCredential(agentType: string | undefined): void {
     // Codex prefers OPENAI_API_KEY; AI Gateway issues a single token that
     // authenticates both backends, so an ANTHROPIC token is also accepted.
     if (openai || anthropic) return;
+    if (!options.inSandbox && hasLocalCodexLogin()) return;
+    const codexSubscriptionHint = options.inSandbox
+      ? ""
+      : `\n` +
+        `  Local-only alternative — use your Codex / ChatGPT subscription:\n` +
+        `    Run \`codex login\` on this machine. deepsec mirrors the\n` +
+        `    resulting ~/.codex/auth.json into a per-invocation tempdir\n` +
+        `    so concurrent batches don't stomp on the session DB.\n`;
     throw new Error(
       `Missing AI credentials for --agent codex.\n` +
         `\n` +
@@ -80,12 +139,24 @@ export function assertAgentCredential(agentType: string | undefined): void {
         `\n` +
         `      AI_GATEWAY_API_KEY=vck_…\n` +
         `\n` +
-        `  Or set OPENAI_API_KEY directly. Full setup:\n` +
-        `      ${SETUP_DOC_URL}`,
+        `  Or set OPENAI_API_KEY directly.\n` +
+        codexSubscriptionHint +
+        `\n` +
+        `  Full setup: ${SETUP_DOC_URL}`,
     );
   }
 
   if (anthropic) return;
+  if (!options.inSandbox && hasLocalClaudeLogin()) return;
+  const subscriptionHint = options.inSandbox
+    ? ""
+    : `\n` +
+      `  Local-only alternative — use your Claude Code subscription:\n` +
+      `    Linux: \`claude login\` writes ~/.claude/.credentials.json and\n` +
+      `      deepsec picks it up automatically.\n` +
+      `    macOS: run \`claude setup-token\` and add the printed token to\n` +
+      `      .env.local as CLAUDE_CODE_OAUTH_TOKEN=… (the Keychain login\n` +
+      `      that Claude Code uses isn't readable from a Node process).\n`;
   throw new Error(
     `Missing AI credentials for --agent ${agentType ?? "claude-agent-sdk"}.\n` +
       `\n` +
@@ -94,8 +165,10 @@ export function assertAgentCredential(agentType: string | undefined): void {
       `\n` +
       `      AI_GATEWAY_API_KEY=vck_…\n` +
       `\n` +
-      `  Or set ANTHROPIC_AUTH_TOKEN directly. Full setup:\n` +
-      `      ${SETUP_DOC_URL}`,
+      `  Or set ANTHROPIC_AUTH_TOKEN directly.\n` +
+      subscriptionHint +
+      `\n` +
+      `  Full setup: ${SETUP_DOC_URL}`,
   );
 }
 
