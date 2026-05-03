@@ -78,10 +78,8 @@ ANTHROPIC_AUTH_TOKEN=vck_...
 ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
 ```
 
-For local-only scans (`process` / `revalidate` / `triage`, not
-`sandbox …`) you can also reuse a Claude Code or Codex subscription
-already on the laptop — no API key needed. See
-[vercel-setup.md § Use your Claude Code or Codex subscription](vercel-setup.md#use-your-claude-code-or-codex-subscription-non-sandbox-only).
+If `claude` or `codex` is already logged in on this machine, non-sandbox
+runs reuse that subscription — no API key needed.
 
 See [vercel-setup.md](vercel-setup.md) for how to get a gateway key
 and how to wire up Vercel Sandbox auth (OIDC or access token).

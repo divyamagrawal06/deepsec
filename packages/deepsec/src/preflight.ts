@@ -51,40 +51,54 @@ function isCodex(agentType: string | undefined): boolean {
 }
 
 /**
- * Detect a local Claude Code subscription login. The Claude Agent SDK
- * spawns the `claude` CLI as a subprocess, so any auth that CLI accepts
- * (Linux file-based credentials, a long-lived OAuth token from
- * `claude setup-token`) lets the SDK run without an API key on the
- * orchestrator's env.
+ * Walk `$PATH` looking for a binary. Used as a positive signal that an
+ * agent CLI (`claude`, `codex`) is set up on this host — if it's
+ * installed, the user almost certainly logged in too, and the SDK will
+ * use whatever auth that CLI manages (Keychain on macOS, file on Linux,
+ * OAuth token env var, etc.). If they happen to be installed but not
+ * logged in, the SDK errors clearly at first call — better than us
+ * pre-blocking with a verbose pile of options.
  *
- * macOS users authenticate Claude Code via Keychain — there's no file
- * marker we can read without spawning `security` and racing against
- * permission prompts. For that path we ask the user to run
- * `claude setup-token` once and put the resulting token in
- * `CLAUDE_CODE_OAUTH_TOKEN`; that's the cross-platform escape hatch the
- * SDK already understands.
- *
- * Only relevant for non-sandbox runs. The sandbox path runs in a worker
- * VM that has no claude binary and no keychain access; it must ship a
- * real API token through the firewall header rewrite, so this helper is
- * never consulted there.
+ * Synchronous PATH walk is cheap enough for preflight; using `execSync`
+ * would also work but adds a fork.
  */
-function hasLocalClaudeLogin(): boolean {
-  if (process.env.CLAUDE_CODE_OAUTH_TOKEN) return true;
-  const claudeHome = process.env.CLAUDE_HOME || join(homedir(), ".claude");
-  return existsSync(join(claudeHome, ".credentials.json"));
+function whichSync(bin: string): boolean {
+  const pathEnv = process.env.PATH || "";
+  const sep = process.platform === "win32" ? ";" : ":";
+  for (const dir of pathEnv.split(sep)) {
+    if (!dir) continue;
+    if (existsSync(join(dir, bin))) return true;
+    if (process.platform === "win32") {
+      if (existsSync(join(dir, `${bin}.exe`))) return true;
+      if (existsSync(join(dir, `${bin}.cmd`))) return true;
+    }
+  }
+  return false;
 }
 
 /**
- * Detect a local Codex subscription login. `codex login` writes
- * `auth.json` into `$CODEX_HOME` (defaulting to `~/.codex`) on every
- * platform deepsec supports — Codex doesn't use Keychain on macOS — so
- * a single file check suffices.
+ * "Likely to just work" signal for the Claude subscription path. The
+ * Claude Agent SDK spawns the `claude` CLI as a subprocess; if that
+ * binary is on PATH the SDK can use whatever auth it manages (Keychain
+ * on macOS, ~/.claude/.credentials.json on Linux, CLAUDE_CODE_OAUTH_TOKEN
+ * env var). We don't try to verify the user is actually logged in — if
+ * not, the SDK's own error at first call is clearer than ours.
  *
- * Same non-sandbox restriction as the Claude variant: the codex binary
- * lives on the orchestrator's host, not in the sandbox worker VM.
+ * Only consulted in non-sandbox runs. The sandbox worker VM has no
+ * claude binary, so this helper is irrelevant there.
  */
-function hasLocalCodexLogin(): boolean {
+function hasLocalClaudeAgent(): boolean {
+  return whichSync("claude");
+}
+
+/**
+ * Same idea for Codex, but stricter: codex-sdk.ts mirrors the user's
+ * `auth.json` into a per-invocation tempdir, so we need that file to
+ * actually exist. `which codex` alone isn't enough — a logged-out
+ * codex CLI would fall through to gateway mode without an API key and
+ * 401. Honors `CODEX_HOME`.
+ */
+function hasLocalCodexAgent(): boolean {
   const codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
   return existsSync(join(codexHome, "auth.json"));
 }
@@ -123,52 +137,22 @@ export function assertAgentCredential(
     // Codex prefers OPENAI_API_KEY; AI Gateway issues a single token that
     // authenticates both backends, so an ANTHROPIC token is also accepted.
     if (openai || anthropic) return;
-    if (!options.inSandbox && hasLocalCodexLogin()) return;
-    const codexSubscriptionHint = options.inSandbox
-      ? ""
-      : `\n` +
-        `  Local-only alternative — use your Codex / ChatGPT subscription:\n` +
-        `    Run \`codex login\` on this machine. deepsec mirrors the\n` +
-        `    resulting ~/.codex/auth.json into a per-invocation tempdir\n` +
-        `    so concurrent batches don't stomp on the session DB.\n`;
+    if (!options.inSandbox && hasLocalCodexAgent()) return;
     throw new Error(
       `Missing AI credentials for --agent codex.\n` +
         `\n` +
-        `  Quickest fix — get a Vercel AI Gateway key (covers both Claude\n` +
-        `  and Codex with one token) and add it to .env.local:\n` +
-        `\n` +
-        `      AI_GATEWAY_API_KEY=vck_…\n` +
-        `\n` +
-        `  Or set OPENAI_API_KEY directly.\n` +
-        codexSubscriptionHint +
-        `\n` +
-        `  Full setup: ${SETUP_DOC_URL}`,
+        `  Add to .env.local:    AI_GATEWAY_API_KEY=vck_…   (or OPENAI_API_KEY=…)\n` +
+        `  Setup: ${SETUP_DOC_URL}`,
     );
   }
 
   if (anthropic) return;
-  if (!options.inSandbox && hasLocalClaudeLogin()) return;
-  const subscriptionHint = options.inSandbox
-    ? ""
-    : `\n` +
-      `  Local-only alternative — use your Claude Code subscription:\n` +
-      `    Linux: \`claude login\` writes ~/.claude/.credentials.json and\n` +
-      `      deepsec picks it up automatically.\n` +
-      `    macOS: run \`claude setup-token\` and add the printed token to\n` +
-      `      .env.local as CLAUDE_CODE_OAUTH_TOKEN=… (the Keychain login\n` +
-      `      that Claude Code uses isn't readable from a Node process).\n`;
+  if (!options.inSandbox && hasLocalClaudeAgent()) return;
   throw new Error(
     `Missing AI credentials for --agent ${agentType ?? "claude-agent-sdk"}.\n` +
       `\n` +
-      `  Quickest fix — get a Vercel AI Gateway key (covers both Claude\n` +
-      `  and Codex with one token) and add it to .env.local:\n` +
-      `\n` +
-      `      AI_GATEWAY_API_KEY=vck_…\n` +
-      `\n` +
-      `  Or set ANTHROPIC_AUTH_TOKEN directly.\n` +
-      subscriptionHint +
-      `\n` +
-      `  Full setup: ${SETUP_DOC_URL}`,
+      `  Add to .env.local:    AI_GATEWAY_API_KEY=vck_…   (or ANTHROPIC_AUTH_TOKEN=…)\n` +
+      `  Setup: ${SETUP_DOC_URL}`,
   );
 }
 

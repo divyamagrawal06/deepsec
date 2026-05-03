@@ -114,9 +114,6 @@ backend you're using.
 |---|---|---|
 | `OPENAI_API_KEY` | `--agent codex` | Codex SDK token. Unset is fine if `AI_GATEWAY_API_KEY` is set, or if Codex routes through AI Gateway with the Anthropic token. |
 | `OPENAI_BASE_URL` | `--agent codex` | Default (when `AI_GATEWAY_API_KEY` is set): `https://ai-gateway.vercel.sh/v1`. |
-| `CLAUDE_CODE_OAUTH_TOKEN` | `--agent claude-agent-sdk`, non-sandbox | Long-lived subscription token from `claude setup-token`. When set (or when `~/.claude/.credentials.json` exists from `claude login`) the orchestrator can run without an Anthropic API token. Sandbox runs still need a real token. See [vercel-setup.md § Use your Claude Code or Codex subscription](vercel-setup.md#use-your-claude-code-or-codex-subscription-non-sandbox-only). |
-| `CLAUDE_HOME` | `--agent claude-agent-sdk`, non-sandbox | Override Claude Code's data dir (default `~/.claude`) for subscription auto-detection. |
-| `CODEX_HOME` | `--agent codex`, non-sandbox | Override Codex's data dir (default `~/.codex`) for subscription auto-detection. When `auth.json` is found there and no API key is set, deepsec mirrors it into a per-invocation tempdir and uses the built-in openai provider. |
 | `DEEPSEC_AGENT_DEBUG` | both backends | Set to `1` to enable verbose agent logging. |
 | `DEEPSEC_DATA_ROOT` | core | Override the data directory location. Equivalent to `dataDir` in config. |
 
