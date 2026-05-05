@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { authBypassMatcher } from "../matchers/auth-bypass.js";
+import { fastapiRouteMatcher } from "../matchers/fastapi-route.js";
+import { flaskRouteMatcher } from "../matchers/flask-route.js";
 import { insecureCryptoMatcher } from "../matchers/insecure-crypto.js";
 import { missingAuthMatcher } from "../matchers/missing-auth.js";
 import { openRedirectMatcher } from "../matchers/open-redirect.js";
@@ -119,5 +121,60 @@ describe("open-redirect matcher", () => {
     const content = readFixture("utils/redirect.ts");
     const matches = openRedirectMatcher.match(content, "src/utils/redirect.ts");
     expect(matches.length).toBeGreaterThan(0);
+  });
+});
+
+describe("fastapi-route matcher", () => {
+  it("detects FastAPI decorator routes as Python web entry points", () => {
+    const content = readFixture("api/python/fastapi_routes.py");
+    const matches = fastapiRouteMatcher.match(content, "src/api/python/fastapi_routes.py");
+    expect(matches).toHaveLength(3);
+    expect(matches.every((m) => m.vulnSlug === "fastapi-route")).toBe(true);
+    expect(matches.map((m) => m.lineNumbers[0])).toEqual([7, 12, 17]);
+    expect(matches.map((m) => m.matchedPattern)).toEqual([
+      "FastAPI GET route decorator — Python HTTP entry point (weak candidate)",
+      "FastAPI POST route decorator — Python HTTP entry point (weak candidate)",
+      "FastAPI API route decorator — Python HTTP entry point (weak candidate)",
+    ]);
+  });
+
+  it("skips Python test files", () => {
+    const content = readFixture("api/python/fastapi_routes.py");
+    const matches = fastapiRouteMatcher.match(content, "tests/test_fastapi_routes.py");
+    expect(matches).toHaveLength(0);
+  });
+
+  it("does not match uppercase decorator method names", () => {
+    const content =
+      "from fastapi import FastAPI\n\napp = FastAPI()\n\n@app.GET('/status')\ndef status():\n    pass\n";
+    const matches = fastapiRouteMatcher.match(content, "src/api/python/uppercase_fastapi.py");
+    expect(matches).toHaveLength(0);
+  });
+});
+
+describe("flask-route matcher", () => {
+  it("detects Flask decorator routes as Python web entry points", () => {
+    const content = readFixture("api/python/flask_routes.py");
+    const matches = flaskRouteMatcher.match(content, "src/api/python/flask_routes.py");
+    expect(matches).toHaveLength(2);
+    expect(matches.every((m) => m.vulnSlug === "flask-route")).toBe(true);
+    expect(matches.map((m) => m.lineNumbers[0])).toEqual([7, 12]);
+    expect(matches.map((m) => m.matchedPattern)).toEqual([
+      "Flask ROUTE decorator — Python HTTP entry point (weak candidate)",
+      "Flask POST route decorator — Python HTTP entry point (weak candidate)",
+    ]);
+  });
+
+  it("does not flag non-Flask Python route-like decorators", () => {
+    const content = "class Job:\n    @worker.route('/nightly')\n    def run(self):\n        pass\n";
+    const matches = flaskRouteMatcher.match(content, "src/jobs/nightly.py");
+    expect(matches).toHaveLength(0);
+  });
+
+  it("does not match uppercase decorator method names", () => {
+    const content =
+      "from flask import Flask\n\napp = Flask(__name__)\n\n@app.GET('/status')\ndef status():\n    pass\n";
+    const matches = flaskRouteMatcher.match(content, "src/api/python/uppercase_flask.py");
+    expect(matches).toHaveLength(0);
   });
 });

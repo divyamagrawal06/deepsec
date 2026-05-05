@@ -33,6 +33,8 @@ import { envVarAsBoolMatcher } from "./env-var-as-bool.js";
 import { errorMessageLeakMatcher } from "./error-message-leak.js";
 import { eventHandlerMismatchMatcher } from "./event-handler-mismatch.js";
 import { expensiveApiAbuseMatcher } from "./expensive-api-abuse.js";
+import { fastapiRouteMatcher } from "./fastapi-route.js";
+import { flaskRouteMatcher } from "./flask-route.js";
 import { frameworkEdgeSandboxMatcher } from "./framework-edge-sandbox.js";
 import { frameworkImageOptimizerMatcher } from "./framework-image-optimizer.js";
 import { frameworkInternalHeaderMatcher } from "./framework-internal-header.js";
@@ -237,6 +239,10 @@ export function createDefaultRegistry(): MatcherRegistry {
   registry.register(sandboxRuntimeScriptMatcher);
   registry.register(goEmbedAssetMatcher);
   registry.register(githubWorkflowSecurityMatcher);
+
+  // Python web
+  registry.register(fastapiRouteMatcher);
+  registry.register(flaskRouteMatcher);
 
   // Terraform / IaC
   registry.register(tfIamWildcardMatcher);
